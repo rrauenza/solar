@@ -14,9 +14,10 @@ _IN_PGE = 'pge_electric_interval_data_8628306005_2010-07-16_to_2014-08-26.xml'
 _IN_PVWATTS_SOUTH = 'pvwatts_hourly_10k_south.csv'
 _IN_PVWATTS_WEST = 'pvwatts_hourly_10k_west.csv'
 
+
 def _main(argv):
-    pvwattsdata_south = get_pvwatts(_IN_PVWATTS_SOUTH, 0.5)
-    pvwattsdata_west = get_pvwatts(_IN_PVWATTS_WEST, 0.0)
+    pvwattsdata_south = get_pvwatts(_IN_PVWATTS_SOUTH, 0.3)
+    pvwattsdata_west = get_pvwatts(_IN_PVWATTS_WEST, 0.3)
     pgedata = get_pge(_IN_PGE)
     pgedata = filter_by_date(pgedata,
                              datetime.datetime(2013, 8, 24, 0, 0, 0, 0),
@@ -81,21 +82,60 @@ def bill_e6(data, report):
 
 
 def apply_e6_tier(dt, usage, days):
-    if 11 <= dt.month < 5:
-        baseline = 10.1
+    summer = not e6_is_winter(dt)
+    if summer:
+        baseline = 10.9 * days
+        off_tiers = ((1.0,  0.11456),
+                     (1.3,  0.13778),
+                     (2.0,  0.22518),
+                     (None, 0.28518),
+                    )
+        partial_tiers = ((1.0,  0.19134),
+                         (1.3,  0.21455),
+                         (2.0,  0.30196),
+                         (None, 0.36196),
+                        )
+        peak_tiers = ((1.0,  0.30661),
+                      (1.3,  0.32982),
+                      (2.0,  0.41723),
+                      (None, 0.47723),
+                     )
     else:
-        baseline = 10.9
+        baseline = 10.1 * days
+        off_tiers = ((1.0,  0.11890),
+                     (1.3,  0.14211),
+                     (2.0,  0.22952),
+                     (None, 0.28952),
+                    )
+        partial_tiers = ((1.0,  0.13573),
+                         (1.3,  0.15894),
+                         (2.0,  0.24635),
+                         (None, 0.30635),
+                        )
+
     total = usage['total']
     off = usage.get('off', 0)
     peak = usage.get('peak', 0)
     partial = usage.get('partial', 0)
 
     assert abs(total - (off + peak + partial)) < 0.01
-    return 0
+    assert(total>= 0.0)
+
+    cost = 0.0
+
+    cost += apply_tier(off, baseline*(off/total), off_tiers)
+    cost += apply_tier(partial, baseline*(partial/total), partial_tiers)
+
+    if peak > 0:
+        cost += apply_tier(peak, baseline*(peak/total), peak_tiers)
+
+    return cost
 
 
 def e6_is_winter(dt):
-    if 11 <= dt.month < 5:
+    if 11 <= dt.month <= 12:
+        return True
+    if 1 <= dt.month < 5:
         return True
     return False
 
@@ -149,37 +189,55 @@ def bill_e1(data, report):
     return report
 
 
-def apply_e1_tier(usage, days):
-    if usage <= 0.0:
-        return 0.0
-    assert(usage >= 0.0)
-    cost = 0.0
-    # switch to kwh
+def apply_tier(usage, baseline, tiers):
+
     usage /= 1000.0
 
-    baseline = 11.0 * days
+    tier1 = baseline * tiers[0][0]
+    tier2 = baseline * tiers[1][0] - tier1
+    tier3 = baseline * tiers[2][0] - tier2 - tier1
+    assert(tiers[3][0] is None)
 
-    tier1 = baseline * 1.00
-    tier2 = baseline * 1.30 - tier1
-    tier3 = baseline * 2.00 - tier2 - tier1
+    p1 = tiers[0][1]
+    p2 = tiers[1][1]
+    p3 = tiers[2][1]
+    p4 = tiers[3][1]
 
-    cost += min(tier1, usage) * 0.13627
+    cost = 0.0
+
+    cost += min(tier1, usage) * p1
     usage -= tier1
     if usage < 0.0:
         return cost
 
-    cost += min(tier2, usage) * 0.15491
+    cost += min(tier2, usage) * p2
     usage -= tier2
     if usage < 0.0:
         return cost
 
-    cost += min(tier3, usage) * 0.31955
+    cost += min(tier3, usage) * p3
     usage -= tier3
     if usage < 0.0:
         return cost
 
-    cost += usage * 0.35955
+    cost += usage * p4
     return cost
+
+
+def apply_e1_tier(usage, days):
+    if usage <= 0.0:
+        return 0.0
+    assert(usage >= 0.0)
+
+    baseline = 11.0 * days
+
+    return apply_tier(usage, baseline,
+        (
+            (1.00,  0.13627),
+            (1.30,  0.15491),
+            (2.00,  0.31955),
+            (None,  0.35955),
+        ))
 
 
 def merge(pge, south, west):
