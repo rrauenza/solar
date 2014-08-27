@@ -16,8 +16,8 @@ _IN_PVWATTS_WEST = 'pvwatts_hourly_10k_west.csv'
 
 
 def _main(argv):
-    pvwattsdata_south = get_pvwatts(_IN_PVWATTS_SOUTH, 0.3)
-    pvwattsdata_west = get_pvwatts(_IN_PVWATTS_WEST, 0.3)
+    pvwattsdata_south = get_pvwatts(_IN_PVWATTS_SOUTH, 0.4)
+    pvwattsdata_west = get_pvwatts(_IN_PVWATTS_WEST, 0.4)
     pgedata = get_pge(_IN_PGE)
     pgedata = filter_by_date(pgedata,
                              datetime.datetime(2013, 8, 24, 0, 0, 0, 0),
@@ -77,6 +77,7 @@ def bill_e6(data, report):
         days = len(ymdays[ym])
         report[ym]['e6_cost_no_solar'] = apply_e6_tier(ym, no_solar[ym], days)
         report[ym]['e6_cost_solar'] = apply_e6_tier(ym, solar[ym], days)
+        report[ym]['days'] = days
 
     return report
 
@@ -119,6 +120,8 @@ def apply_e6_tier(dt, usage, days):
     partial = usage.get('partial', 0)
 
     assert abs(total - (off + peak + partial)) < 0.01
+    if total <= 0.0:
+        return 0.0
     assert(total>= 0.0)
 
     cost = 0.0
@@ -267,6 +270,7 @@ def do_report(report):
                      "E1 (solar) Cost",
                      "E6 (no solar) Cost",
                      "E6 (solar) Cost",
+                     "Number of Days",
                     ])
     rows = ('usage',
             'solar_west',
@@ -276,6 +280,7 @@ def do_report(report):
             'e1_cost_solar',
             'e6_cost_no_solar',
             'e6_cost_solar',
+            'days',
            )
 
     totals = dict()
