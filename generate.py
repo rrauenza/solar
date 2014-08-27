@@ -11,8 +11,8 @@ _IN_PVWATTS_SOUTH = 'pvwatts_hourly_10k_south.csv'
 _IN_PVWATTS_WEST = 'pvwatts_hourly_10k_west.csv'
 
 def _main(argv):
-    pvwattsdata_south = get_pvwatts(_IN_PVWATTS_SOUTH)
-    pvwattsdata_west = get_pvwatts(_IN_PVWATTS_WEST)
+    pvwattsdata_south = get_pvwatts(_IN_PVWATTS_SOUTH, 0.5)
+    pvwattsdata_west = get_pvwatts(_IN_PVWATTS_WEST, 0.0)
     pgedata = get_pge(_IN_PGE)
     data = merge(pgedata, pvwattsdata_south, pvwattsdata_west)
     data = bill_e1(data)
@@ -148,7 +148,7 @@ def get_pge(filename):
     return data
 
 
-def get_pvwatts(filename):
+def get_pvwatts(filename, scale):
     data = {}
     with open(filename) as f:
         while True:
@@ -160,7 +160,7 @@ def get_pvwatts(filename):
         for row in reader:
             tup = (int(row['Month']), int(row['Day']), int(row['Hour']))
             data[tup] = float(row['AC System Output (W)']) * 1 # one hour!
-            data[tup] *= 0.30
+            data[tup] *= scale
     return data
 
 
